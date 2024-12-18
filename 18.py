@@ -1,52 +1,40 @@
 from sys import stdin
 
+from grid import Grid, Tile
 
-class Byte:
 
-    def __init__(self, x: int, y: int):
-        self.x = x
-        self.y = y
+class Byte(Tile):
+
+    def __init__(self, u: int, v: int):
+        super().__init__(u, v)
         self.corrupted = False
         self.distance = 9999
 
-    def __hash__(self):
-        return hash((self.x, self.y))
+    def display(self):
+        if self.corrupted:
+            return "#"
+        else:
+            return "."
 
 
-class MemorySpace:
+class Memory(Grid):
 
-    def __init__(self):
-        self.bytes = [[Byte(x, y) for x in range(71)] for y in range(71)]
-
-    def byte(self, x: int, y: int):
-        if not 0 <= x < 71:
-            return None
-        if not 0 <= y < 71:
-            return None
-        return self.bytes[y][x]
-
-    def start(self):
-        return self.byte(0, 0)
-
-    def end(self):
-        return self.byte(70, 70)
-
-    def neighbours(self, byte: Byte):
-        return (
-            neighbour
-            for neighbour in [
-                self.byte(byte.x, byte.y - 1),
-                self.byte(byte.x, byte.y + 1),
-                self.byte(byte.x - 1, byte.y),
-                self.byte(byte.x + 1, byte.y),
-            ]
-            if neighbour is not None
+    def __init__(self, height: int, width: int):
+        super().__init__(
+            [[Byte(u, v) for v in range(width)] for u in range(height)]
         )
 
-    def corrupt(self, x: int, y: int):
-        byte = self.byte(x, y)
+    def start(self) -> Byte:
+        return self.tile(0, 0)
+
+    def end(self) -> Byte:
+        return self.tile(self.height - 1, self.width - 1)
+
+    def corrupt(self, u: int, v: int):
+        byte = self.tile(u, v)
         if byte is None:
             return
+        assert isinstance(byte, Byte)
         byte.corrupted = True
 
     def calculate_distances(self):
@@ -56,6 +44,7 @@ class MemorySpace:
         while search_frontier:
             this = search_frontier.pop()
             for neighbour in self.neighbours(this):
+                assert isinstance(neighbour, Byte)
                 if neighbour.corrupted:
                     continue
                 if neighbour.distance <= this.distance + 1:
@@ -64,9 +53,9 @@ class MemorySpace:
                 search_frontier.add(neighbour)
 
 
-memory_space = MemorySpace()
+memory = Memory(71, 71)
 for byte in stdin.read().splitlines()[:1024]:
     x, y = map(int, byte.split(","))
-    memory_space.corrupt(x, y)
-memory_space.calculate_distances()
-print(memory_space.start().distance)
+    memory.corrupt(y, x)
+memory.calculate_distances()
+print(memory.start().distance)
