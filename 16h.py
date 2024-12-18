@@ -1,8 +1,9 @@
-import itertools
 from sys import stdin
 
+import grid
 
-class Tile:
+
+class Tile(grid.Tile):
     """
     Represent a tile in the maze.
 
@@ -11,196 +12,158 @@ class Tile:
     facing that direction.
     """
 
-    def __init__(self, ns_start: int, ew_start: int, ns_end: int, ew_end: int):
-        self.ns_start = ns_start
-        self.ew_start = ew_start
-        self.ns_end = ns_end
-        self.ew_end = ew_end
-        self.best = False
+    def __init__(self, u: int, v: int, wall: bool = False):
+        super().__init__(u, v)
+        if wall:
+            self.ns_start = -1
+            self.ew_start = -1
+            self.ns_end = -1
+            self.ew_end = -1
+        else:
+            self.ns_start = 999_999
+            self.ew_start = 999_999
+            self.ns_end = 999_999
+            self.ew_end = 999_999
 
-    @classmethod
-    def empty(cls):
-        return Tile(999_999_999, 999_999_999, 999_999_999, 999_999_999)
-
-    @classmethod
-    def wall(cls):
-        return Tile(-1, -1, -1, -1)
+    def display(self):
+        if self.ns_start == -1:
+            return "."
+        else:
+            return " "
 
 
-class Maze:
+class Maze(grid.Grid):
 
     def __init__(
-        self, tiles: list[list[Tile]], si: int, sj: int, ei: int, ej: int
+        self, tiles: list[list[Tile]], su: int, sv: int, eu: int, ev: int
     ):
-        self.tiles = tiles
-        self.height = len(tiles)
-        self.width = len(tiles[0])
-        self.calculate_scores_start(si, sj)
-        self.calculate_scores_end(ei, ej)
-        self.calculate_event_score(ei, ej)
+        super().__init__(tiles)
+        self.su = su
+        self.sv = sv
+        self.eu = eu
+        self.ev = ev
+        self.search_frontier: set[Tile] = set()
 
     @classmethod
     def from_input(cls, data: str):
         tiles: list[list[Tile]] = []
-        for i, data_row in enumerate(data.splitlines()):
+        for u, data_row in enumerate(data.splitlines()):
             tile_row: list[Tile] = []
-            for j, tile in enumerate(data_row):
+            for v, tile in enumerate(data_row):
                 if tile == "S":
-                    si = i
-                    sj = j
-                    tile_row.append(Tile.empty())
+                    su = u
+                    sv = v
+                    tile_row.append(Tile(u, v))
                 elif tile == "E":
-                    ei = i
-                    ej = j
-                    tile_row.append(Tile.empty())
+                    eu = u
+                    ev = v
+                    tile_row.append(Tile(u, v))
                 elif tile == ".":
-                    tile_row.append(Tile.empty())
+                    tile_row.append(Tile(u, v))
                 elif tile == "#":
-                    tile_row.append(Tile.wall())
+                    tile_row.append(Tile(u, v, wall=True))
                 else:
                     assert False
             tiles.append(tile_row)
-        return Maze(tiles, si, sj, ei, ej)
+        return Maze(tiles, su, sv, eu, ev)
 
-    def tile(self, i: int, j: int):
-        """
-        Return the tile at (i, j).
+    def start(self) -> Tile:
+        return self.tile(self.su, self.sv)
 
-        If (i, j) are invalid, return a new wall tile instead.
-        """
-        if not 0 <= i < self.height:
-            return Tile.wall()
-        if not 0 <= j < self.width:
-            return Tile.wall()
-        return self.tiles[i][j]
+    def end(self) -> Tile:
+        return self.tile(self.eu, self.ev)
 
-    def calculate_scores_start(self, si: int, sj: int):
-        """Mark (si, sj) as the start tile and calculate scores."""
-        start_tile = self.tile(si, sj)
-        start_tile.ns_start = 1000
-        start_tile.ew_start = 0
-        queue: set[tuple[int, int]] = {(si, sj)}
+    def calculate_scores_from_start(self):
+        start = self.start()
+        start.ns_start = 1000
+        start.ew_start = 0
+        self.search_frontier = {start}
+        while self.search_frontier:
+            this = self.search_frontier.pop()
+            self._update_ns_start(this, self.tile(this.u - 1, this.v))
+            self._update_ns_start(this, self.tile(this.u + 1, this.v))
+            self._update_ew_start(this, self.tile(this.u, this.v - 1))
+            self._update_ew_start(this, self.tile(this.u, this.v + 1))
 
-        while queue:
+    def _update_ns_start(self, tile: Tile, neighbour: Tile | None):
+        if neighbour is None:
+            return
+        if neighbour.ns_start > tile.ns_start + 1:
+            neighbour.ns_start = tile.ns_start + 1
+            self.search_frontier.add(neighbour)
+        if neighbour.ns_start > tile.ew_start + 1001:
+            neighbour.ns_start = tile.ew_start + 1001
+            self.search_frontier.add(neighbour)
 
-            i, j = queue.pop()
-            this = self.tile(i, j)
+    def _update_ew_start(self, tile: Tile, neighbour: Tile | None):
+        if neighbour is None:
+            return
+        if neighbour.ew_start > tile.ew_start + 1:
+            neighbour.ew_start = tile.ew_start + 1
+            self.search_frontier.add(neighbour)
+        if neighbour.ew_start > tile.ns_start + 1001:
+            neighbour.ew_start = tile.ns_start + 1001
+            self.search_frontier.add(neighbour)
 
-            left = self.tile(i, j - 1)
-            if left.ew_start > this.ew_start + 1:
-                left.ew_start = this.ew_start + 1
-                queue.add((i, j - 1))
-            if left.ew_start > this.ns_start + 1001:
-                left.ew_start = this.ns_start + 1001
-                queue.add((i, j - 1))
-
-            right = self.tile(i, j + 1)
-            if right.ew_start > this.ew_start + 1:
-                right.ew_start = this.ew_start + 1
-                queue.add((i, j + 1))
-            if right.ew_start > this.ns_start + 1001:
-                right.ew_start = this.ns_start + 1001
-                queue.add((i, j + 1))
-
-            up = self.tile(i - 1, j)
-            if up.ns_start > this.ns_start + 1:
-                up.ns_start = this.ns_start + 1
-                queue.add((i - 1, j))
-            if up.ns_start > this.ew_start + 1001:
-                up.ns_start = this.ew_start + 1001
-                queue.add((i - 1, j))
-
-            down = self.tile(i + 1, j)
-            if down.ns_start > this.ns_start + 1:
-                down.ns_start = this.ns_start + 1
-                queue.add((i + 1, j))
-            if down.ns_start > this.ew_start + 1001:
-                down.ns_start = this.ew_start + 1001
-                queue.add((i + 1, j))
-
-    def calculate_scores_end(self, ei: int, ej: int):
-        """Mark (ej, ej) as the end tile and calculate scores."""
-        end_tile = self.tile(ei, ej)
-        if end_tile.ns_start < end_tile.ns_end:
-            end_tile.ns_end = 0
-            end_tile.ew_end = 1000
-        elif end_tile.ns_start > end_tile.ns_end:
-            end_tile.ns_end = 1000
-            end_tile.ew_end = 0
+    def calculate_scores_from_end(self):
+        end = self.end()
+        if end.ns_start < end.ns_end:
+            end.ns_end = 0
+            end.ew_end = 1000
+        elif end.ns_start > end.ns_end:
+            end.ns_end = 1000
+            end.ew_end = 0
         else:
-            end_tile.ns_end = 0
-            end_tile.ew_end = 0
-        queue: set[tuple[int, int]] = {(ei, ej)}
+            end.ns_end = 0
+            end.ew_end = 0
+        self.search_frontier = {end}
+        while self.search_frontier:
+            this = self.search_frontier.pop()
+            self._update_ns_end(this, self.tile(this.u - 1, this.v))
+            self._update_ns_end(this, self.tile(this.u + 1, this.v))
+            self._update_ew_end(this, self.tile(this.u, this.v - 1))
+            self._update_ew_end(this, self.tile(this.u, this.v + 1))
 
-        while queue:
+    def _update_ns_end(self, tile: Tile, neighbour: Tile | None):
+        if neighbour is None:
+            return
+        if neighbour.ns_end > tile.ns_end + 1:
+            neighbour.ns_end = tile.ns_end + 1
+            self.search_frontier.add(neighbour)
+        if neighbour.ns_end > tile.ew_end + 1001:
+            neighbour.ns_end = tile.ew_end + 1001
+            self.search_frontier.add(neighbour)
 
-            i, j = queue.pop()
-            this = self.tile(i, j)
+    def _update_ew_end(self, tile: Tile, neighbour: Tile | None):
+        if neighbour is None:
+            return
+        if neighbour.ew_end > tile.ew_end + 1:
+            neighbour.ew_end = tile.ew_end + 1
+            self.search_frontier.add(neighbour)
+        if neighbour.ew_end > tile.ns_end + 1001:
+            neighbour.ew_end = tile.ns_end + 1001
+            self.search_frontier.add(neighbour)
 
-            left = self.tile(i, j - 1)
-            if left.ew_end > this.ew_end + 1:
-                left.ew_end = this.ew_end + 1
-                queue.add((i, j - 1))
-            if left.ew_end > this.ns_end + 1001:
-                left.ew_end = this.ns_end + 1001
-                queue.add((i, j - 1))
+    def event_score(self):
+        end = self.end()
+        return min(end.ns_start, end.ew_start)
 
-            right = self.tile(i, j + 1)
-            if right.ew_end > this.ew_end + 1:
-                right.ew_end = this.ew_end + 1
-                queue.add((i, j + 1))
-            if right.ew_end > this.ns_end + 1001:
-                right.ew_end = this.ns_end + 1001
-                queue.add((i, j + 1))
-
-            up = self.tile(i - 1, j)
-            if up.ns_end > this.ns_end + 1:
-                up.ns_end = this.ns_end + 1
-                queue.add((i - 1, j))
-            if up.ns_end > this.ew_end + 1001:
-                up.ns_end = this.ew_end + 1001
-                queue.add((i - 1, j))
-
-            down = self.tile(i + 1, j)
-            if down.ns_end > this.ns_end + 1:
-                down.ns_end = this.ns_end + 1
-                queue.add((i + 1, j))
-            if down.ns_end > this.ew_end + 1001:
-                down.ns_end = this.ew_end + 1001
-                queue.add((i + 1, j))
-
-    def calculate_event_score(self, ei: int, ej: int):
-        end_tile = self.tile(ei, ej)
-        self.event_score = min(end_tile.ns_start, end_tile.ew_start)
+    def on_path(self, tile: Tile):
+        end = self.end()
+        event_score = min(end.ns_start, end.ew_start)
+        return (
+            tile.ns_start + tile.ns_end == event_score
+            or tile.ew_start + tile.ew_end == event_score
+            or tile.ns_start + tile.ew_end + 1000 == event_score
+            or tile.ew_start + tile.ns_end + 1000 == event_score
+        )
 
     def n_best_tiles(self):
-        n_best_tiles = 0
-        for tile in itertools.chain(*self.tiles):
-            if tile.ns_start + tile.ns_end == self.event_score:
-                n_best_tiles += 1
-            elif tile.ew_start + tile.ew_end == self.event_score:
-                n_best_tiles += 1
-        return n_best_tiles
-
-    def debug(self):
-        for i, row in enumerate(self.tiles):
-            for j, tile in enumerate(row):
-                if tile.ns_start == -1:
-                    print(".", end="")
-                elif tile.ns_start + tile.ns_end == self.event_score:
-                    print("O", end="")
-                elif tile.ew_start + tile.ew_end == self.event_score:
-                    print("O", end="")
-                else:
-                    print(" ", end="")
-            print()
-
-
-# This solution can't detect best tiles on the corners of paths. I
-# couldn't be bothered fixing this or changing approach so I just
-# visualise the paths and count the corners manually.
+        return sum(1 for tile in self.tiles() if self.on_path(tile))
 
 
 maze = Maze.from_input(stdin.read())
-maze.debug()
+maze.calculate_scores_from_start()
+maze.calculate_scores_from_end()
+print(maze.display(lambda tile: "O" if maze.on_path(tile) else tile.display()))
 print(maze.n_best_tiles())
