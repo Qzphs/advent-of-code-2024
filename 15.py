@@ -1,6 +1,8 @@
 from enum import Enum
 from sys import stdin
 
+from grid import Grid, GridTile
+
 
 class Feature(Enum):
 
@@ -17,90 +19,98 @@ class Movement(Enum):
     LEFT = "<"
     RIGHT = ">"
 
-    def coordinates(self) -> tuple[int, int]:
+    @property
+    def u(self):
         if self == Movement.UP:
-            return (-1, 0)
-        elif self == Movement.DOWN:
-            return (1, 0)
-        elif self == Movement.LEFT:
-            return (0, -1)
-        elif self == Movement.RIGHT:
-            return (0, 1)
+            return -1
+        if self == Movement.DOWN:
+            return 1
+        return 0
+
+    @property
+    def v(self):
+        if self == Movement.LEFT:
+            return -1
+        if self == Movement.RIGHT:
+            return 1
+        return 0
 
 
-class Warehouse:
+class WarehouseTile(GridTile):
+
+    def __init__(self, u: int, v: int, feature: Feature):
+        super().__init__(u, v)
+        self.feature = feature
+
+    def display(self):
+        return self.feature.value
+
+
+class Warehouse(Grid[WarehouseTile]):
 
     def __init__(
-        self, features: list[list[Feature]], movements: list[Movement]
+        self, tiles: list[list[WarehouseTile]], movements: list[Movement]
     ):
-        self.features = features
-        self.movements = movements
+        super().__init__(tiles)
         self._init_robot()
-        self.height = len(self.features)
-        self.width = len(self.features[0])
+        self.movements = movements
 
     def _init_robot(self):
-        for i, row in enumerate(self.features):
-            for j, feature in enumerate(row):
-                if feature != Feature.ROBOT:
-                    continue
-                self.robot_i = i
-                self.robot_j = j
-                return
-        assert False, "no robot found"
+        for tile in self.tiles():
+            if tile.feature != Feature.ROBOT:
+                continue
+            self.ru = tile.u
+            self.rv = tile.v
+            return
+        assert False, "no robot in warehouse"
 
     @classmethod
     def from_input(cls, data: str):
-        map_data, movement_data = data.split("\n\n")
-        features = [
-            [Feature(feature) for feature in row]
-            for row in map_data.splitlines()
+        map_part, movement_part = data.split("\n\n")
+        tiles = [
+            [
+                WarehouseTile(u, v, Feature(feature))
+                for v, feature in enumerate(row)
+            ]
+            for u, row in enumerate(map_part.splitlines())
         ]
         movements = [
-            Movement(movement) for movement in movement_data.replace("\n", "")
+            Movement(movement) for movement in movement_part.replace("\n", "")
         ]
-        return Warehouse(features, movements)
+        return Warehouse(tiles, movements)
 
     def move_robot(self, movement: Movement):
 
         # Find empty space to move to
-        delta_i, delta_j = movement.coordinates()
-        initial_i = self.robot_i + delta_i
-        initial_j = self.robot_j + delta_j
-        target_i = initial_i
-        target_j = initial_j
-        target_feature = self.features[target_i][target_j]
-        while target_feature == Feature.BOX:
-            target_i += delta_i
-            target_j += delta_j
-            target_feature = self.features[target_i][target_j]
+        iu = self.ru + movement.u
+        iv = self.rv + movement.v
+        tu = iu
+        tv = iv
+        target = self.tile(tu, tv)
+        while target.feature == Feature.BOX:
+            tu += movement.u
+            tv += movement.v
+            target = self.tile(tu, tv)
 
         # Don't move if a wall is blocking
-        if target_feature == Feature.WALL:
+        if target.feature == Feature.WALL:
             return
 
         # Move boxes, if the robot pushed any
-        if (target_i, target_j) != (initial_i, initial_j):
-            self.features[target_i][target_j] = Feature.BOX
+        if (tu, tv) != (iu, iv):
+            self.tile(tu, tv).feature = Feature.BOX
 
         # Move robot
-        self.features[initial_i][initial_j] = Feature.ROBOT
-        self.features[self.robot_i][self.robot_j] = Feature.EMPTY
-        self.robot_i = initial_i
-        self.robot_j = initial_j
+        self.tile(iu, iv).feature = Feature.ROBOT
+        self.tile(self.ru, self.rv).feature = Feature.EMPTY
+        self.ru = iu
+        self.rv = iv
 
     def gps_coordinate_sum(self):
-        gps_coordinate_sum = 0
-        for i, row in enumerate(self.features):
-            for j, feature in enumerate(row):
-                if feature != Feature.BOX:
-                    continue
-                gps_coordinate_sum += (100 * i) + j
-        return gps_coordinate_sum
-
-    def box_locations(self):
-        return "\n".join(
-            "".join(feature.value for feature in row) for row in self.features
+        return sum(
+            (100 * tile.u) + tile.v
+            for tile in self.tiles()
+            if tile.feature == Feature.BOX
         )
 
 

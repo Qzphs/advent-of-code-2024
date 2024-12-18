@@ -1,6 +1,8 @@
 from enum import Enum
 from sys import stdin
 
+from grid import Grid, GridTile
+
 
 class Feature(Enum):
 
@@ -10,6 +12,19 @@ class Feature(Enum):
     BOX_RIGHT = "]"
     ROBOT = "@"
 
+    @classmethod
+    def pair_from_input(cls, data: str):
+        if data == ".":
+            return [Feature.EMPTY, Feature.EMPTY]
+        elif data == "#":
+            return [Feature.WALL, Feature.WALL]
+        elif data == "O":
+            return [Feature.BOX_LEFT, Feature.BOX_RIGHT]
+        elif data == "@":
+            return [Feature.ROBOT, Feature.EMPTY]
+        else:
+            assert False, f"unrecognised feature {data}"
+
 
 class Movement(Enum):
 
@@ -18,152 +33,162 @@ class Movement(Enum):
     LEFT = "<"
     RIGHT = ">"
 
-    def coordinates(self) -> tuple[int, int]:
+    @property
+    def u(self):
         if self == Movement.UP:
-            return (-1, 0)
-        elif self == Movement.DOWN:
-            return (1, 0)
-        elif self == Movement.LEFT:
-            return (0, -1)
-        elif self == Movement.RIGHT:
-            return (0, 1)
+            return -1
+        if self == Movement.DOWN:
+            return 1
+        return 0
+
+    @property
+    def v(self):
+        if self == Movement.LEFT:
+            return -1
+        if self == Movement.RIGHT:
+            return 1
+        return 0
 
 
-class Warehouse:
+class WarehouseTile(GridTile):
+
+    def __init__(self, u: int, v: int, feature: Feature):
+        super().__init__(u, v)
+        self.feature = feature
+
+    @classmethod
+    def pair(cls, u: int, v: int, features: list[Feature]):
+        left, right = features
+        return [
+            WarehouseTile(u, v * 2, left),
+            WarehouseTile(u, v * 2 + 1, right),
+        ]
+
+    def display(self):
+        return self.feature.value
+
+
+class Warehouse(Grid[WarehouseTile]):
 
     def __init__(
-        self, features: list[list[Feature]], movements: list[Movement]
+        self, tiles: list[list[WarehouseTile]], movements: list[Movement]
     ):
-        self.features = features
-        self.movements = movements
+        super().__init__(tiles)
         self._init_robot()
-        self.height = len(self.features)
-        self.width = len(self.features[0])
+        self.movements = movements
 
     def _init_robot(self):
-        for i, row in enumerate(self.features):
-            for j, feature in enumerate(row):
-                if feature != Feature.ROBOT:
-                    continue
-                self.ri = i
-                self.rj = j
-                return
-        assert False, "no robot found"
+        for tile in self.tiles():
+            if tile.feature != Feature.ROBOT:
+                continue
+            self.ru = tile.u
+            self.rv = tile.v
+            return
+        assert False, "no robot in warehouse"
 
     @classmethod
     def from_input(cls, data: str):
-        map_data, movement_data = data.split("\n\n")
-        features: list[list[Feature]] = []
-        for data_row in map_data.splitlines():
-            feature_row: list[Feature] = []
-            for feature in data_row:
-                if feature == ".":
-                    feature_row.append(Feature.EMPTY)
-                    feature_row.append(Feature.EMPTY)
-                elif feature == "#":
-                    feature_row.append(Feature.WALL)
-                    feature_row.append(Feature.WALL)
-                elif feature == "O":
-                    feature_row.append(Feature.BOX_LEFT)
-                    feature_row.append(Feature.BOX_RIGHT)
-                elif feature == "@":
-                    feature_row.append(Feature.ROBOT)
-                    feature_row.append(Feature.EMPTY)
-                else:
-                    assert False
-            features.append(feature_row)
-        movements = [
-            Movement(movement) for movement in movement_data.replace("\n", "")
+        map_part, movement_part = data.split("\n\n")
+        tiles = [
+            sum(
+                (
+                    WarehouseTile.pair(u, v, Feature.pair_from_input(feature))
+                    for v, feature in enumerate(row)
+                ),
+                start=[],
+            )
+            for u, row in enumerate(map_part.splitlines())
         ]
-        return Warehouse(features, movements)
+        movements = [
+            Movement(movement) for movement in movement_part.replace("\n", "")
+        ]
+        return Warehouse(tiles, movements)
 
     def move_robot(self, movement: Movement):
-        di, dj = movement.coordinates()
-        if not self.pushable(self.ri, self.rj, di, dj):
+        if not self.pushable(self.ru, self.rv, movement):
             return
-        self.push(self.ri, self.rj, di, dj)
-        self.ri += di
-        self.rj += dj
+        self.push(self.ru, self.rv, movement)
+        self.ru += movement.u
+        self.rv += movement.v
 
-    def pushable(self, oi: int, oj: int, di: int, dj: int) -> bool:
+    def pushable(self, ou: int, ov: int, movement: Movement) -> bool:
         """
-        Return True if (oi, oj) can be pushed in direction (di, dj).
+        Return True if (ou, ov) can be pushed in (du, dv).
 
-        The pusher is located at (oi - di, oj - dj), and wants to
-        occupy (oi, oj), pushing the feature here to (oi + di, oj + dj).
+        (du, dv) is the direction of movement.
+
+        The pusher is located at (ou - du, ov - dv) and wants to occupy
+        (ou, ov), pushing the feature here to (ou + du, ov + dv).
 
         Empty spaces don't need to occupy anything and are considered
         always pushable by default.
         """
-        feature = self.features[oi][oj]
-        if feature == Feature.EMPTY:
+        du = movement.u
+        dv = movement.v
+        origin = self.tile(ou, ov)
+        if origin.feature == Feature.EMPTY:
             return True
-        elif feature == Feature.WALL:
+        elif origin.feature == Feature.WALL:
             return False
-        elif feature == Feature.BOX_LEFT and di == 0:
-            return self.pushable(oi + di, oj + dj + 1, di, dj)
-        elif feature == Feature.BOX_RIGHT and di == 0:
-            return self.pushable(oi + di, oj + dj - 1, di, dj)
-        elif feature == Feature.BOX_LEFT and dj == 0:
-            return self.pushable(oi + di, oj + dj, di, dj) and self.pushable(
-                oi + di, oj + dj + 1, di, dj
+        elif origin.feature == Feature.BOX_LEFT and du == 0:
+            return self.pushable(ou + du, ov + dv + 1, movement)
+        elif origin.feature == Feature.BOX_RIGHT and du == 0:
+            return self.pushable(ou + du, ov + dv - 1, movement)
+        elif origin.feature == Feature.BOX_LEFT and dv == 0:
+            return self.pushable(ou + du, ov + dv, movement) and self.pushable(
+                ou + du, ov + dv + 1, movement
             )
-        elif feature == Feature.BOX_RIGHT and dj == 0:
-            return self.pushable(oi + di, oj + dj, di, dj) and self.pushable(
-                oi + di, oj + dj - 1, di, dj
+        elif origin.feature == Feature.BOX_RIGHT and dv == 0:
+            return self.pushable(ou + du, ov + dv, movement) and self.pushable(
+                ou + du, ov + dv - 1, movement
             )
-        elif feature == Feature.ROBOT:
-            return self.pushable(oi + di, oj + dj, di, dj)
+        elif origin.feature == Feature.ROBOT:
+            return self.pushable(ou + du, ov + dv, movement)
         else:
             assert False
 
-    def push(self, oi: int, oj: int, di: int, dj: int):
-        feature = self.features[oi][oj]
-        if feature == Feature.EMPTY:
+    def push(self, ou: int, ov: int, movement: Movement):
+        du = movement.u
+        dv = movement.v
+        origin = self.tile(ou, ov)
+        if origin.feature == Feature.EMPTY:
             return
-        elif feature == Feature.BOX_LEFT and di == 0:
-            self.push(oi + di, oj + dj + 1, di, dj)
-            self.features[oi + di][oj + dj] = Feature.BOX_LEFT
-            self.features[oi + di][oj + dj + 1] = Feature.BOX_RIGHT
-            self.features[oi][oj] = Feature.EMPTY
-        elif feature == Feature.BOX_RIGHT and di == 0:
-            self.push(oi + di, oj + dj - 1, di, dj)
-            self.features[oi + di][oj + dj] = Feature.BOX_RIGHT
-            self.features[oi + di][oj + dj - 1] = Feature.BOX_LEFT
-            self.features[oi][oj] = Feature.EMPTY
-        elif feature == Feature.BOX_LEFT and dj == 0:
-            self.push(oi + di, oj + dj, di, dj)
-            self.push(oi + di, oj + dj + 1, di, dj)
-            self.features[oi + di][oj + dj] = Feature.BOX_LEFT
-            self.features[oi + di][oj + dj + 1] = Feature.BOX_RIGHT
-            self.features[oi][oj] = Feature.EMPTY
-            self.features[oi][oj + 1] = Feature.EMPTY
-        elif feature == Feature.BOX_RIGHT and dj == 0:
-            self.push(oi + di, oj + dj, di, dj)
-            self.push(oi + di, oj + dj - 1, di, dj)
-            self.features[oi + di][oj + dj] = Feature.BOX_RIGHT
-            self.features[oi + di][oj + dj - 1] = Feature.BOX_LEFT
-            self.features[oi][oj] = Feature.EMPTY
-            self.features[oi][oj - 1] = Feature.EMPTY
-        elif feature == Feature.ROBOT:
-            self.push(oi + di, oj + dj, di, dj)
-            self.features[oi + di][oj + dj] = Feature.ROBOT
-            self.features[oi][oj] = Feature.EMPTY
+        elif origin.feature == Feature.BOX_LEFT and du == 0:
+            self.push(ou + du, ov + dv + 1, movement)
+            self.tile(ou + du, ov + dv).feature = Feature.BOX_LEFT
+            self.tile(ou + du, ov + dv + 1).feature = Feature.BOX_RIGHT
+            self.tile(ou, ov).feature = Feature.EMPTY
+        elif origin.feature == Feature.BOX_RIGHT and du == 0:
+            self.push(ou + du, ov + dv - 1, movement)
+            self.tile(ou + du, ov + dv).feature = Feature.BOX_RIGHT
+            self.tile(ou + du, ov + dv - 1).feature = Feature.BOX_LEFT
+            self.tile(ou, ov).feature = Feature.EMPTY
+        elif origin.feature == Feature.BOX_LEFT and dv == 0:
+            self.push(ou + du, ov + dv, movement)
+            self.push(ou + du, ov + dv + 1, movement)
+            self.tile(ou + du, ov + dv).feature = Feature.BOX_LEFT
+            self.tile(ou + du, ov + dv + 1).feature = Feature.BOX_RIGHT
+            self.tile(ou, ov).feature = Feature.EMPTY
+            self.tile(ou, ov + 1).feature = Feature.EMPTY
+        elif origin.feature == Feature.BOX_RIGHT and dv == 0:
+            self.push(ou + du, ov + dv, movement)
+            self.push(ou + du, ov + dv - 1, movement)
+            self.tile(ou + du, ov + dv).feature = Feature.BOX_RIGHT
+            self.tile(ou + du, ov + dv - 1).feature = Feature.BOX_LEFT
+            self.tile(ou, ov).feature = Feature.EMPTY
+            self.tile(ou, ov - 1).feature = Feature.EMPTY
+        elif origin.feature == Feature.ROBOT:
+            self.push(ou + du, ov + dv, movement)
+            self.tile(ou + du, ov + dv).feature = Feature.ROBOT
+            self.tile(ou, ov).feature = Feature.EMPTY
         else:
             assert False
 
     def gps_coordinate_sum(self):
-        gps_coordinate_sum = 0
-        for i, row in enumerate(self.features):
-            for j, feature in enumerate(row):
-                if feature != Feature.BOX_LEFT:
-                    continue
-                gps_coordinate_sum += (100 * i) + j
-        return gps_coordinate_sum
-
-    def box_locations(self):
-        return "\n".join(
-            "".join(feature.value for feature in row) for row in self.features
+        return sum(
+            (100 * tile.u) + tile.v
+            for tile in self.tiles()
+            if tile.feature == Feature.BOX_LEFT
         )
 
 
