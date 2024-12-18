@@ -1,9 +1,9 @@
 from sys import stdin
 
-import grid
+from grid import Grid, GridTile
 
 
-class Tile(grid.Tile):
+class MazeTile(GridTile):
     """
     Represent a tile in the maze.
 
@@ -22,45 +22,45 @@ class Tile(grid.Tile):
             self.ew_score = 999_999
 
 
-class Maze(grid.Grid):
+class Maze(Grid[MazeTile]):
 
     def __init__(
-        self, tiles: list[list[Tile]], su: int, sv: int, eu: int, ev: int
+        self, tiles: list[list[MazeTile]], su: int, sv: int, eu: int, ev: int
     ):
         super().__init__(tiles)
         self.su = su
         self.sv = sv
         self.eu = eu
         self.ev = ev
-        self.search_frontier: set[Tile] = set()
+        self.search_frontier: set[MazeTile] = set()
 
     @classmethod
     def from_input(cls, data: str):
-        tiles: list[list[Tile]] = []
+        tiles: list[list[MazeTile]] = []
         for u, data_row in enumerate(data.splitlines()):
-            tile_row: list[Tile] = []
+            tile_row: list[MazeTile] = []
             for v, tile in enumerate(data_row):
                 if tile == "S":
                     su = u
                     sv = v
-                    tile_row.append(Tile(u, v))
+                    tile_row.append(MazeTile(u, v))
                 elif tile == "E":
                     eu = u
                     ev = v
-                    tile_row.append(Tile(u, v))
+                    tile_row.append(MazeTile(u, v))
                 elif tile == ".":
-                    tile_row.append(Tile(u, v))
+                    tile_row.append(MazeTile(u, v))
                 elif tile == "#":
-                    tile_row.append(Tile(u, v, wall=True))
+                    tile_row.append(MazeTile(u, v, wall=True))
                 else:
                     assert False
             tiles.append(tile_row)
         return Maze(tiles, su, sv, eu, ev)
 
-    def start(self) -> Tile:
+    def start(self):
         return self.tile(self.su, self.sv)
 
-    def end(self) -> Tile:
+    def end(self):
         return self.tile(self.eu, self.ev)
 
     def calculate_scores(self):
@@ -75,7 +75,7 @@ class Maze(grid.Grid):
             self._update_ew_neighbour(this, self.tile(this.u, this.v - 1))
             self._update_ew_neighbour(this, self.tile(this.u, this.v + 1))
 
-    def _update_ns_neighbour(self, tile: Tile, neighbour: Tile | None):
+    def _update_ns_neighbour(self, tile: MazeTile, neighbour: MazeTile | None):
         if neighbour is None:
             return
         if neighbour.ns_score > tile.ns_score + 1:
@@ -85,7 +85,7 @@ class Maze(grid.Grid):
             neighbour.ns_score = tile.ew_score + 1001
             self.search_frontier.add(neighbour)
 
-    def _update_ew_neighbour(self, tile: Tile, neighbour: Tile | None):
+    def _update_ew_neighbour(self, tile: MazeTile, neighbour: MazeTile | None):
         if neighbour is None:
             return
         if neighbour.ew_score > tile.ew_score + 1:

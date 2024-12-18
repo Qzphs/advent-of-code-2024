@@ -1,9 +1,9 @@
 from sys import stdin
 
-from grid import Grid, Tile
+from grid import Grid, GridTile
 
 
-class Byte(Tile):
+class Byte(GridTile):
 
     def __init__(self, u: int, v: int):
         super().__init__(u, v)
@@ -17,24 +17,23 @@ class Byte(Tile):
             return "."
 
 
-class Memory(Grid):
+class Memory(Grid[Byte]):
 
     def __init__(self, height: int, width: int):
         super().__init__(
             [[Byte(u, v) for v in range(width)] for u in range(height)]
         )
 
-    def start(self) -> Byte:
+    def start(self):
         return self.tile(0, 0)
 
-    def end(self) -> Byte:
+    def end(self):
         return self.tile(self.height - 1, self.width - 1)
 
     def corrupt(self, u: int, v: int):
         byte = self.tile(u, v)
         if byte is None:
             return
-        assert isinstance(byte, Byte)
         byte.corrupted = True
 
     def calculate_distances(self):
@@ -44,7 +43,6 @@ class Memory(Grid):
         while search_frontier:
             this = search_frontier.pop()
             for neighbour in self.neighbours(this):
-                assert isinstance(neighbour, Byte)
                 if neighbour.corrupted:
                     continue
                 if neighbour.distance <= this.distance + 1:
@@ -54,7 +52,6 @@ class Memory(Grid):
 
     def calculate_distances(self):
         for byte in self.tiles():
-            assert isinstance(byte, Byte)
             byte.distance = 9999
         end = self.end()
         end.distance = 0
@@ -62,7 +59,6 @@ class Memory(Grid):
         while search_frontier:
             this = search_frontier.pop()
             for neighbour in self.neighbours(this):
-                assert isinstance(neighbour, Byte)
                 if neighbour.corrupted:
                     continue
                 if neighbour.distance <= this.distance + 1:

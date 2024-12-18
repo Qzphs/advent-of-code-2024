@@ -1,9 +1,9 @@
 from sys import stdin
 
-import grid
+from grid import Grid, GridTile
 
 
-class Tile(grid.Tile):
+class MazeTile(GridTile):
     """
     Represent a tile in the maze.
 
@@ -32,45 +32,45 @@ class Tile(grid.Tile):
             return " "
 
 
-class Maze(grid.Grid):
+class Maze(Grid[MazeTile]):
 
     def __init__(
-        self, tiles: list[list[Tile]], su: int, sv: int, eu: int, ev: int
+        self, tiles: list[list[MazeTile]], su: int, sv: int, eu: int, ev: int
     ):
         super().__init__(tiles)
         self.su = su
         self.sv = sv
         self.eu = eu
         self.ev = ev
-        self.search_frontier: set[Tile] = set()
+        self.search_frontier: set[MazeTile] = set()
 
     @classmethod
     def from_input(cls, data: str):
-        tiles: list[list[Tile]] = []
+        tiles: list[list[MazeTile]] = []
         for u, data_row in enumerate(data.splitlines()):
-            tile_row: list[Tile] = []
+            tile_row: list[MazeTile] = []
             for v, tile in enumerate(data_row):
                 if tile == "S":
                     su = u
                     sv = v
-                    tile_row.append(Tile(u, v))
+                    tile_row.append(MazeTile(u, v))
                 elif tile == "E":
                     eu = u
                     ev = v
-                    tile_row.append(Tile(u, v))
+                    tile_row.append(MazeTile(u, v))
                 elif tile == ".":
-                    tile_row.append(Tile(u, v))
+                    tile_row.append(MazeTile(u, v))
                 elif tile == "#":
-                    tile_row.append(Tile(u, v, wall=True))
+                    tile_row.append(MazeTile(u, v, wall=True))
                 else:
                     assert False
             tiles.append(tile_row)
         return Maze(tiles, su, sv, eu, ev)
 
-    def start(self) -> Tile:
+    def start(self):
         return self.tile(self.su, self.sv)
 
-    def end(self) -> Tile:
+    def end(self):
         return self.tile(self.eu, self.ev)
 
     def calculate_scores_from_start(self):
@@ -85,7 +85,7 @@ class Maze(grid.Grid):
             self._update_ew_start(this, self.tile(this.u, this.v - 1))
             self._update_ew_start(this, self.tile(this.u, this.v + 1))
 
-    def _update_ns_start(self, tile: Tile, neighbour: Tile | None):
+    def _update_ns_start(self, tile: MazeTile, neighbour: MazeTile | None):
         if neighbour is None:
             return
         if neighbour.ns_start > tile.ns_start + 1:
@@ -95,7 +95,7 @@ class Maze(grid.Grid):
             neighbour.ns_start = tile.ew_start + 1001
             self.search_frontier.add(neighbour)
 
-    def _update_ew_start(self, tile: Tile, neighbour: Tile | None):
+    def _update_ew_start(self, tile: MazeTile, neighbour: MazeTile | None):
         if neighbour is None:
             return
         if neighbour.ew_start > tile.ew_start + 1:
@@ -124,7 +124,7 @@ class Maze(grid.Grid):
             self._update_ew_end(this, self.tile(this.u, this.v - 1))
             self._update_ew_end(this, self.tile(this.u, this.v + 1))
 
-    def _update_ns_end(self, tile: Tile, neighbour: Tile | None):
+    def _update_ns_end(self, tile: MazeTile, neighbour: MazeTile | None):
         if neighbour is None:
             return
         if neighbour.ns_end > tile.ns_end + 1:
@@ -134,7 +134,7 @@ class Maze(grid.Grid):
             neighbour.ns_end = tile.ew_end + 1001
             self.search_frontier.add(neighbour)
 
-    def _update_ew_end(self, tile: Tile, neighbour: Tile | None):
+    def _update_ew_end(self, tile: MazeTile, neighbour: MazeTile | None):
         if neighbour is None:
             return
         if neighbour.ew_end > tile.ew_end + 1:
@@ -148,7 +148,7 @@ class Maze(grid.Grid):
         end = self.end()
         return min(end.ns_start, end.ew_start)
 
-    def on_path(self, tile: Tile):
+    def on_path(self, tile: MazeTile):
         end = self.end()
         event_score = min(end.ns_start, end.ew_start)
         return (
@@ -165,5 +165,4 @@ class Maze(grid.Grid):
 maze = Maze.from_input(stdin.read())
 maze.calculate_scores_from_start()
 maze.calculate_scores_from_end()
-print(maze.display(lambda tile: "O" if maze.on_path(tile) else tile.display()))
 print(maze.n_best_tiles())

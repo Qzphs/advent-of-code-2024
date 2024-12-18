@@ -1,7 +1,7 @@
 from typing import Callable
 
 
-class Tile:
+class GridTile:
     """
     Represent a tile inside the grid.
 
@@ -21,7 +21,7 @@ class Tile:
         return "."
 
 
-class Grid:
+class Grid[T: GridTile]:
     """
     Represent a grid of tiles.
 
@@ -29,7 +29,7 @@ class Grid:
     top-left corner.
     """
 
-    def __init__(self, tiles: list[list[Tile]]):
+    def __init__(self, tiles: list[list[T]]):
         """
         Initialise a new grid.
 
@@ -63,7 +63,7 @@ class Grid:
         """Return a list of all tiles."""
         return sum(self._tiles, start=[])
 
-    def neighbours(self, tile: Tile):
+    def neighbours(self, tile: T):
         """Return a list of tiles adjacent to `tile`."""
         neighbours = [
             self.tile(tile.u - 1, tile.v),
@@ -73,13 +73,19 @@ class Grid:
         ]
         return list(filter(None, neighbours))
 
-    def display(self, function: Callable[[Tile], str] = Tile.display):
+    def display(self, function: Callable[[T], str] | None = None):
         """
         Return a string displaying the grid.
 
-        `function`, if supplied, will be used to decide how to display
-        tiles. It should be a callable that returns a string.
+        `function` is a callable that decides how to display tiles. It
+        should accept a tile argument and return a string. If not
+        supplied, use T.display() by default.
         """
-        return "\n".join(
-            "".join(function(tile) for tile in row) for row in self._tiles
-        )
+        if function is None:
+            return "\n".join(
+                "".join(tile.display() for tile in row) for row in self._tiles
+            )
+        else:
+            return "\n".join(
+                "".join(function(tile) for tile in row) for row in self._tiles
+            )
